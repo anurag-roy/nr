@@ -7,24 +7,61 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strings"
 
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
-type PackageJSON struct {
-	Scripts map[string]string `json:"scripts"`
-}
+var docStyle = lipgloss.NewStyle().Margin(1, 2)
 
-type script struct {
+type item struct {
 	name    string
 	command string
 }
 
+func (i item) Title() string       { return i.name }
+func (i item) Description() string { return i.command }
+func (i item) FilterValue() string { return i.name }
+
 type model struct {
-	choices []script
-	cursor  int
-	choice  string
+	list     list.Model
+	selected string
+}
+
+func (m model) Init() tea.Cmd {
+	return nil
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+
+	case tea.WindowSizeMsg:
+		h, v := docStyle.GetFrameSize()
+		m.list.SetSize(msg.Width-h, msg.Height-v)
+
+	case tea.KeyMsg:
+		switch keypress := msg.String(); keypress {
+		case "ctrl+c":
+			return m, tea.Quit
+
+		case "enter":
+			m.selected = m.list.SelectedItem().(item).name
+			return m, tea.Quit
+		}
+	}
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
+}
+
+func (m model) View() string {
+	return docStyle.Render(m.list.View())
+}
+
+type PackageJSON struct {
+	Scripts map[string]string `json:"scripts"`
 }
 
 func main() {
@@ -52,30 +89,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	scripts := []script{}
+	items := []list.Item{}
 	for scriptName, scriptCommand := range packageData.Scripts {
-		scripts = append(scripts, script{
+		items = append(items, item{
 			name:    scriptName,
 			command: scriptCommand,
 		})
 	}
 
-	p := tea.NewProgram(model{
-		choices: scripts,
-	})
+	m := model{list: list.New(items, list.NewDefaultDelegate(), 0, 0)}
+	m.list.Title = "Please choose a script to run"
 
-	m, err := p.Run()
+	p := tea.NewProgram(m, tea.WithAltScreen())
+
+	final, err := p.Run()
 	if err != nil {
-		fmt.Println("Failed to start program:", err)
+		fmt.Println("Error running program:", err)
 		os.Exit(1)
 	}
 
 	// Assert the final tea.Model to our local model and print the choice.
-	if m, ok := m.(model); ok && m.choice != "" {
-		fmt.Printf("\n---\nExecuting npm run %s!\n", m.choice)
+	if m, ok := final.(model); ok && m.selected != "" {
+		fmt.Printf("\n---\nExecuting npm run %s\n", m.selected)
 
 		// Define the command to run
-		cmd := exec.Command("npm", "run", m.choice)
+		cmd := exec.Command("npm", "run", m.selected)
 
 		// Get a pipe to capture command's standard output
 		stdout, err := cmd.StdoutPipe()
@@ -102,55 +140,4 @@ func main() {
 			os.Exit(1)
 		}
 	}
-}
-
-func (m model) Init() tea.Cmd {
-	return nil
-}
-
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q", "esc":
-			return m, tea.Quit
-
-		case "enter":
-			// Send the choice on the channel and exit.
-			m.choice = m.choices[m.cursor].name
-			return m, tea.Quit
-
-		case "down", "j":
-			m.cursor++
-			if m.cursor >= len(m.choices) {
-				m.cursor = 0
-			}
-
-		case "up", "k":
-			m.cursor--
-			if m.cursor < 0 {
-				m.cursor = len(m.choices) - 1
-			}
-		}
-	}
-
-	return m, nil
-}
-
-func (m model) View() string {
-	s := strings.Builder{}
-	s.WriteString("Which script would you like to run?\n\n")
-
-	for i := 0; i < len(m.choices); i++ {
-		if m.cursor == i {
-			s.WriteString("[•] ")
-		} else {
-			s.WriteString("[ ] ")
-		}
-		s.WriteString(m.choices[i].name)
-		s.WriteString("\n")
-	}
-	s.WriteString("\n(press q to quit)\n")
-
-	return s.String()
 }
