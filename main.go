@@ -73,6 +73,18 @@ func main() {
 	}
 	defer file.Close()
 
+	// Detect package manager
+	packageManager := "npm"
+	if _, err := os.Stat("package-lock.json"); err == nil {
+		packageManager = "npm"
+	} else if _, err := os.Stat("yarn.lock"); err == nil {
+		packageManager = "yarn"
+	} else if _, err := os.Stat("pnpm-lock.yaml"); err == nil {
+		packageManager = "pnpm"
+	} else if _, err := os.Stat("bun.lockb"); err == nil {
+		packageManager = "bun"
+	}
+
 	// Read the file content into a byte slice
 	data, err := io.ReadAll(file)
 	if err != nil {
@@ -110,10 +122,10 @@ func main() {
 
 	// Assert the final tea.Model to our local model and print the choice.
 	if m, ok := final.(model); ok && m.selected != "" {
-		fmt.Printf("\n---\nExecuting npm run %s\n", m.selected)
+		fmt.Printf("\n---\nExecuting %s run %s\n", packageManager, m.selected)
 
 		// Define the command to run
-		cmd := exec.Command("npm", "run", m.selected)
+		cmd := exec.Command(packageManager, "run", m.selected)
 
 		// Get a pipe to capture command's standard output
 		stdout, err := cmd.StdoutPipe()
