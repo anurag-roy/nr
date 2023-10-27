@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sort"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -108,6 +109,11 @@ func main() {
 			command: scriptCommand,
 		})
 	}
+
+	// Sort the items alphabetically by command name
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].(item).name < items[j].(item).name
+	})
 
 	m := model{list: list.New(items, list.NewDefaultDelegate(), 0, 0)}
 	m.list.Title = "Please choose a script to run"
